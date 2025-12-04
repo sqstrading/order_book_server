@@ -27,8 +27,7 @@ struct Args {
     websocket_compression_level: Option<u32>,
 
     /// When enabled (default), snapshot mismatches are logged but do not stop the server.
-    /// Can also be configured via the `SNAPSHOT_TOLERANT` environment variable.
-    #[arg(long, env = "SNAPSHOT_TOLERANT", default_value_t = true, action = ArgAction::Set)]
+    #[arg(long, default_value_t = true, action = ArgAction::Set)]
     snapshot_tolerant: bool,
 }
 
