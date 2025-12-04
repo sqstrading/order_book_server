@@ -1,4 +1,4 @@
-use crate::types::{L2Book, L4Book, Trade};
+use crate::types::{L2Book, L4Book, OrderUpdates, Trade};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -24,6 +24,8 @@ pub(crate) enum Subscription {
     L2Book { coin: String, n_sig_figs: Option<u32>, n_levels: Option<usize>, mantissa: Option<u64> },
     #[serde(rename_all = "camelCase")]
     L4Book { coin: String },
+    #[serde(rename_all = "camelCase")]
+    OrderUpdates { user: String },
 }
 
 impl Subscription {
@@ -69,6 +71,15 @@ impl Subscription {
                 info!("Valid subscription");
                 true
             }
+            Self::OrderUpdates { user } => {
+                if user.is_empty() {
+                    info!("Invalid subscription: empty user address");
+                    false
+                } else {
+                    info!("Valid orderUpdates subscription");
+                    true
+                }
+            }
         }
     }
 }
@@ -81,6 +92,7 @@ pub(crate) enum ServerResponse {
     L2Book(L2Book),
     L4Book(L4Book),
     Trades(Vec<Trade>),
+    OrderUpdates(OrderUpdates),
     Error(String),
 }
 

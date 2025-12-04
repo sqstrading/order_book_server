@@ -5,12 +5,13 @@ use crate::{
     order_book::{Coin, Snapshot},
     prelude::*,
     types::{
-        L2Book, L4Book, L4BookUpdates, L4Order, Trade,
+        L2Book, L4Book, L4BookUpdates, L4Order, OrderUpdates, Trade,
         inner::InnerLevel,
         node_data::{Batch, NodeDataFill, NodeDataOrderDiff, NodeDataOrderStatus},
         subscription::{ClientMessage, DEFAULT_LEVELS, ServerResponse, Subscription, SubscriptionManager},
     },
 };
+use alloy::primitives::Address;
 use axum::{Router, response::IntoResponse, routing::get};
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info};
@@ -19,6 +20,7 @@ use std::{
     env::home_dir,
     sync::Arc,
 };
+use std::str::FromStr;
 use tokio::select;
 use tokio::{
     net::TcpListener,
@@ -135,6 +137,11 @@ async fn handle_socket(
                             },
                             InternalMessage::L4BookUpdates{ diff_batch, status_batch } => {
                                 let mut book_updates = coin_to_book_updates(diff_batch, status_batch);
+                                // First handle orderUpdates subscriptions (does not consume map entries)
+                                for sub in manager.subscriptions() {
+                                    send_ws_data_from_order_updates(&mut socket, sub, &book_updates).await;
+                                }
+                                // Then handle L4Book subscriptions (consumes per-coin entries)
                                 for sub in manager.subscriptions() {
                                     send_ws_data_from_book_updates(&mut socket, sub, &mut book_updates).await;
                                 }
@@ -334,6 +341,46 @@ async fn send_ws_data_from_book_updates(
             send_socket_message(socket, msg).await;
         }
     }
+}
+
+async fn send_ws_data_from_order_updates(
+    socket: &mut WebSocket,
+    subscription: &Subscription,
+    book_updates: &HashMap<String, L4BookUpdates>,
+) {
+    let Subscription::OrderUpdates { user } = subscription else {
+        return;
+    };
+
+    let Ok(target) = Address::from_str(user) else {
+        error!("Invalid user address in orderUpdates subscription: {user}");
+        return;
+    };
+
+    let mut statuses = Vec::new();
+    let mut time = None;
+    let mut height = None;
+
+    for updates in book_updates.values() {
+        for s in &updates.order_statuses {
+            if s.user == target {
+                statuses.push(s.clone());
+                time.get_or_insert(updates.time);
+                height.get_or_insert(updates.height);
+            }
+        }
+    }
+
+    if statuses.is_empty() {
+        return;
+    }
+
+    let time = time.unwrap_or(0);
+    let height = height.unwrap_or(0);
+
+    let payload = OrderUpdates { time, height, order_statuses: statuses };
+    let msg = ServerResponse::OrderUpdates(payload);
+    send_socket_message(socket, msg).await;
 }
 
 async fn send_ws_data_from_trades(

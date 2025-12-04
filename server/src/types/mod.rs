@@ -90,6 +90,13 @@ impl L4BookUpdates {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct OrderUpdates {
+    pub time: u64,
+    pub height: u64,
+    pub order_statuses: Vec<NodeDataOrderStatus>,
+}
+
 // RawL4Order is the version of a L4Order we want to serialize and deserialize directly
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
