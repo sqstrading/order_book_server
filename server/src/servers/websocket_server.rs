@@ -11,7 +11,6 @@ use crate::{
         subscription::{ClientMessage, DEFAULT_LEVELS, ServerResponse, Subscription, SubscriptionManager},
     },
 };
-use alloy::primitives::Address;
 use axum::{Router, response::IntoResponse, routing::get};
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info};
@@ -20,7 +19,6 @@ use std::{
     env::home_dir,
     sync::Arc,
 };
-use std::str::FromStr;
 use tokio::select;
 use tokio::{
     net::TcpListener,
@@ -348,12 +346,7 @@ async fn send_ws_data_from_order_updates(
     subscription: &Subscription,
     book_updates: &HashMap<String, L4BookUpdates>,
 ) {
-    let Subscription::OrderUpdates { user } = subscription else {
-        return;
-    };
-
-    let Ok(target) = Address::from_str(user) else {
-        error!("Invalid user address in orderUpdates subscription: {user}");
+    let Subscription::OrderUpdates { .. } = subscription else {
         return;
     };
 
@@ -363,11 +356,9 @@ async fn send_ws_data_from_order_updates(
 
     for updates in book_updates.values() {
         for s in &updates.order_statuses {
-            if s.user == target {
-                statuses.push(s.clone());
-                time.get_or_insert(updates.time);
-                height.get_or_insert(updates.height);
-            }
+            statuses.push(s.clone());
+            time.get_or_insert(updates.time);
+            height.get_or_insert(updates.height);
         }
     }
 
