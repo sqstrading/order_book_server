@@ -346,9 +346,9 @@ async fn send_ws_data_from_order_updates(
     subscription: &Subscription,
     book_updates: &HashMap<String, L4BookUpdates>,
 ) {
-    let Subscription::OrderUpdates { .. } = subscription else {
-        return;
-    };
+    let Subscription::OrderUpdates { user } = subscription else { return };
+
+    let target = user.to_lowercase();
 
     let mut statuses = Vec::new();
     let mut time = None;
@@ -356,9 +356,14 @@ async fn send_ws_data_from_order_updates(
 
     for updates in book_updates.values() {
         for s in &updates.order_statuses {
-            statuses.push(s.clone());
-            time.get_or_insert(updates.time);
-            height.get_or_insert(updates.height);
+            // Compare the hex-encoded address with the requested user address.
+            // `Address` serializes to a 0x-prefixed lower-hex string, so we match that format.
+            let addr_hex = format!("{:#x}", s.user);
+            if addr_hex.eq_ignore_ascii_case(&target) {
+                statuses.push(s.clone());
+                time.get_or_insert(updates.time);
+                height.get_or_insert(updates.height);
+            }
         }
     }
 
