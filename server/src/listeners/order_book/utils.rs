@@ -62,7 +62,13 @@ pub(super) fn validate_snapshot_consistency<O: Clone + PartialEq + Debug>(
                 for (order1, order2) in orders1.iter().zip(orders2.iter()) {
                     if *order1 != *order2 {
                         return Err(
-                            format!("Orders do not match, expected: {:?} received: {:?}", *order2, *order1).into()
+                            format!(
+                                "Orders do not match for coin {}. Expected: {:?} received: {:?}",
+                                coin.value(),
+                                *order2,
+                                *order1
+                            )
+                            .into(),
                         );
                     }
                 }

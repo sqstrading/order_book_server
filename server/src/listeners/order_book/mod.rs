@@ -39,7 +39,11 @@ mod utils;
 
 // WARNING - this code assumes no other file system operations are occurring in the watched directories
 // if there are scripts running, this may not work as intended
-pub(crate) async fn hl_listen(listener: Arc<Mutex<OrderBookListener>>, dir: PathBuf) -> Result<()> {
+pub(crate) async fn hl_listen(
+    listener: Arc<Mutex<OrderBookListener>>,
+    dir: PathBuf,
+    snapshot_tolerant: bool,
+) -> Result<()> {
     let order_statuses_dir = EventSource::OrderStatuses.event_source_dir(&dir).canonicalize()?;
     let fills_dir = EventSource::Fills.event_source_dir(&dir).canonicalize()?;
     let order_diffs_dir = EventSource::OrderDiffs.event_source_dir(&dir).canonicalize()?;
@@ -120,7 +124,7 @@ pub(crate) async fn hl_listen(listener: Arc<Mutex<OrderBookListener>>, dir: Path
             _ = ticker.tick() => {
                 let listener = listener.clone();
                 let snapshot_fetch_task_tx = snapshot_fetch_task_tx.clone();
-                fetch_snapshot(dir.clone(), listener, snapshot_fetch_task_tx, ignore_spot);
+                fetch_snapshot(dir.clone(), listener, snapshot_fetch_task_tx, ignore_spot, snapshot_tolerant);
             }
             () = sleep(Duration::from_secs(5)) => {
                 let listener = listener.lock().await;
@@ -137,6 +141,7 @@ fn fetch_snapshot(
     listener: Arc<Mutex<OrderBookListener>>,
     tx: UnboundedSender<Result<()>>,
     ignore_spot: bool,
+    snapshot_tolerant: bool,
 ) {
     let tx = tx.clone();
     tokio::spawn(async move {
@@ -171,7 +176,19 @@ fn fetch_snapshot(
                             }
                             let stored_snapshot = state.compute_snapshot().snapshot;
                             info!("Validating snapshot");
-                            validate_snapshot_consistency(&stored_snapshot, expected_snapshot, ignore_spot)
+                            match validate_snapshot_consistency(&stored_snapshot, expected_snapshot, ignore_spot) {
+                                Ok(()) => Ok(()),
+                                Err(err) => {
+                                    if snapshot_tolerant {
+                                        error!(
+                                            "Snapshot validation error at height {height} (tolerant mode, continuing): {err}"
+                                        );
+                                        Ok(())
+                                    } else {
+                                        Err(err)
+                                    }
+                                }
+                            }
                         } else {
                             listener.lock().await.init_from_snapshot(expected_snapshot, height);
                             Ok(())
